@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
-import win32com.client, pythoncom, sys, time
+import win32com.client, pythoncom, os, sys, time, threading, datetime
+import multiprocessing as mp
+import signal
 import pandas as pd
 from enum import Enum
 
 XING_PATH = "C:\\eBEST\\xingAPI"
+total_data101 = []
+total_data201 = []
+total_data301 = []
 
 class Server(Enum):
     HTS = 1
@@ -50,6 +55,25 @@ class XAQueryEventHandler:
         XAQueryEventHandler.query_code = code
         XAQueryEventHandler.query_state = 1
 
+# 선물/옵션 현재가
+def getCurrent(code) :
+    tr_code = 't2101'
+    INBLOCK = "%sInBlock" % tr_code
+    INBLOCK1 = "%sInBlock1" % tr_code
+    OUTBLOCK = "%sOutBlock" % tr_code
+    OUTBLOCK1 = "%sOutBlock1" % tr_code
+    OUTBLOCK2 = "%sOutBlock2" % tr_code
+    OUTBLOCK3 = "%sOutBlock3" % tr_code
+    query = win32com.client.DispatchWithEvents("XA_DataSet.XAQuery", XAQueryEventHandler)
+    query.ResFileName = "C:\\eBEST\\xingAPI\\Res\\"+tr_code+".res"
+    query.SetFieldData(INBLOCK, "focode", 0, code)
+    query.Request(0)
+    ret = wait_for_event(tr_code)
+    if ret == 0 :
+        return 0
+    price = query.GetFieldData(OUTBLOCK, "actprice", 0).strip() #가격
+    return price
+
 def getFuturesOptions(yyyymm):
     tr_code = 't2301'
     INBLOCK = "%sInBlock" % tr_code
@@ -67,12 +91,13 @@ def getFuturesOptions(yyyymm):
 
     ret = wait_for_event(tr_code)
     if ret == 0 :
-        return []
+        return False
     
     # for futures
-    total_data = []
+    # total_data = []
     nCount = query.GetBlockCount(OUTBLOCK)
-    for i in range(nCount):        
+    for i in range(nCount):
+        yymmddhh   = "{0}".format(time.strftime("%b %d %Y %H:%M:%S"))
         gmshCode   = query.GetFieldData(OUTBLOCK, "gmshcode"  , 0).strip()
         histimpv   = query.GetFieldData(OUTBLOCK, "histimpv"  , 0).strip()
         jandatecnt = query.GetFieldData(OUTBLOCK, "jandatecnt", 0).strip()
@@ -84,6 +109,7 @@ def getFuturesOptions(yyyymm):
         gmdiff     = query.GetFieldData(OUTBLOCK, "gmdiff"    , 0).strip()
         gmvolume   = query.GetFieldData(OUTBLOCK, "gmvolume"  , 0).strip()
         tmp_data   = [ 
+            yymmddhh  ,
             gmshCode  ,
             histimpv  ,
             jandatecnt,
@@ -94,14 +120,15 @@ def getFuturesOptions(yyyymm):
             gmchange  ,
             gmdiff    ,
             gmvolume ] 
-        total_data.append(tmp_data)
-    df101 = pd.DataFrame(total_data)
-    df101.columns = ['shcode','histimpv','rem','cimpv','pimpv','prx','sgn','chg','updn','vol']
+        total_data101.append(tmp_data)
+    # df101 = pd.DataFrame(total_data)
+    # df101.columns = ['YYMMDD', 'shcode','histimpv','rem','cimpv','pimpv','prx','sgn','chg','updn','vol']
 
     # for call
-    total_data = []
+    # total_data = []
     nCount = query.GetBlockCount(OUTBLOCK1)
-    for i in range(nCount) :
+    for i in range(nCount):
+        yymmddhh= "{0}".format(time.strftime("%b %d %Y %H:%M:%S"))
         actprice= query.GetFieldData(OUTBLOCK1, "actprice"  , i).strip() #행사가
         optcode = query.GetFieldData(OUTBLOCK1, "optcode"   , i).strip() #종목코드
         price   = query.GetFieldData(OUTBLOCK1, "price"     , i).strip() #행사가
@@ -112,6 +139,7 @@ def getFuturesOptions(yyyymm):
         vega    = query.GetFieldData(OUTBLOCK1, "vega"      , i).strip() #vega
         value   = query.GetFieldData(OUTBLOCK1, "value"     , i).strip() #거래대금
         tmp_data= [
+            yymmddhh,
             actprice,
             optcode ,
             price   ,
@@ -121,13 +149,14 @@ def getFuturesOptions(yyyymm):
             ceta    ,
             vega    ,
             value ]
-        total_data.append(tmp_data)
-    df201 = pd.DataFrame(total_data)
-    df201.columns = ['act','code','prx','iv','delt','gama','ceta','vega','value']
+        total_data201.append(tmp_data)
+    # df201 = pd.DataFrame(total_data)
+    # df201.columns = ['YYMMDD', 'act','code','prx','iv','delt','gama','ceta','vega','value']
     # for put
-    total_data = []
+    # total_data = []
     nCount = query.GetBlockCount(OUTBLOCK2)
-    for i in range(nCount) :        
+    for i in range(nCount): 
+        yymmddhh= "{0}".format(time.strftime("%b %d %Y %H:%M:%S"))
         actprice= query.GetFieldData(OUTBLOCK2, "actprice"  , i).strip() #행사가
         optcode = query.GetFieldData(OUTBLOCK2, "optcode"   , i).strip() #종목코드
         price   = query.GetFieldData(OUTBLOCK2, "price"     , i).strip() #행사가
@@ -138,6 +167,7 @@ def getFuturesOptions(yyyymm):
         vega    = query.GetFieldData(OUTBLOCK2, "vega"      , i).strip() #vega
         value   = query.GetFieldData(OUTBLOCK2, "value"     , i).strip() #거래대금
         tmp_data= [
+            yymmddhh,
             actprice,
             optcode ,
             price   ,
@@ -147,40 +177,36 @@ def getFuturesOptions(yyyymm):
             ceta    ,
             vega    ,
             value ]
-        total_data.append(tmp_data)
-    df301 = pd.DataFrame(total_data)
-    df301.columns = ['act','code','prx','iv','delt','gama','ceta','vega','value']
+        total_data301.append(tmp_data)
+    # df301 = pd.DataFrame(total_data)
+    # df301.columns = ['YYMMDD', 'act','code','prx','iv','delt','gama','ceta','vega','value']
 
-    return df101,df201,df301
+    return True
 
-# 선물/옵션 현재가
-def getCurrent(code) :
-    tr_code = 't2101'
-    INBLOCK = "%sInBlock" % tr_code
-    INBLOCK1 = "%sInBlock1" % tr_code
-    OUTBLOCK = "%sOutBlock" % tr_code
-    OUTBLOCK1 = "%sOutBlock1" % tr_code
-    OUTBLOCK2 = "%sOutBlock2" % tr_code
-    OUTBLOCK3 = "%sOutBlock3" % tr_code
+def foo(yyyymm): 
+    if not getFuturesOptions(yyyymm):
+        print('\n[EXIT]: Terminated by getFuturesOptions()')
+        quit(0)    
 
-    query = win32com.client.DispatchWithEvents("XA_DataSet.XAQuery", XAQueryEventHandler)
-    query.ResFileName = "C:\\eBEST\\xingAPI\\Res\\"+tr_code+".res"
-    query.SetFieldData(INBLOCK, "focode", 0, code)
-    query.Request(0)
-
-    ret = wait_for_event(tr_code)
-    if ret == 0 :
-        return 0
-
-    price = query.GetFieldData(OUTBLOCK, "actprice", 0).strip() #가격
-    return price
+def process(yyyymm, hr, minute):
+    while True:
+        d = datetime.datetime.now()
+        if d.hour == hr and d.minute == minute:
+            os.kill(os.getppid(), signal.SIGTERM)
+            print('\n[EXIT]: Terminated @ PM03:39')
+            sys.exit()
+        else:
+            if not getFuturesOptions(yyyymm):
+                print('\n[EXIT]: Terminated by getFuturesOptions()')
+                quit(0)
+            print('working...', datetime.datetime.now().time())
+            time.sleep(3)
 
 if __name__ == "__main__":    
     RUN_MODE = Server.DEMO
-    TODAY = time.strftime("%Y%m%d")
-    TODAY_TIME = time.strftime("%H%M%S")
-    TODAY_S = time.strftime("%Y-%m-%d")
-
+    YYYYMM = '202107'
+    MKTEND = datetime.time(15, 30, 0) # 오후3시 30분
+    
     if RUN_MODE : #모의투자
         server_add = "hts.ebestsec.co.kr"
         id = "jimsjoo"
@@ -195,15 +221,39 @@ if __name__ == "__main__":
         account_number = '20055436101'
         account_pwd = "0000"   
     
-    print('\neBest testing')
+    print('\n[START]: eBest testing')
     ret = login(server_add, id, passwd, cert_passwd, account_number, account_pwd)
     if ret == 0 :
-        print('fail to login')
+        print('\n[ERROR]: fail to login')
         quit(0)
     time.sleep(1)
-
-    df1,df2,df3 = getFuturesOptions('202107')
-
-    print('=== df1 ============================='); print(df1)
-    print('=== df2 ============================='); print(df2)
-    print('=== df3 ============================='); print(df3)
+    
+    p = mp.Process(target=process, args=(YYYYMM, 15, 30))
+    p.start()
+        
+    # while datetime.datetime.now().time()<MKTEND:
+    #     foo(YYYYMM)        
+    #     time.sleep(3)        
+    
+    yymmdd = time.strftime('%Y%m%d')
+    
+    if len(total_data101)!=0:
+        df101 = pd.DataFrame(total_data101)
+        df101.columns = ['YYMMDD', 'shcode','histimpv','rem','cimpv','pimpv','prx','sgn','chg','updn','vol']
+        file_name = "{0}_{1}".format(yymmdd,'101.csv')
+        blHeader = False if os.path.exists(file_name) else True
+        df101.to_csv(file_name, mode='a', header=blHeader, index=False, encoding = 'cp949')
+    
+    if len(total_data201)!=0:
+        df201 = pd.DataFrame(total_data201)
+        df201.columns = ['YYMMDD', 'act','code','prx','iv','delt','gama','ceta','vega','value']
+        file_name = "{0}_{1}".format(yymmdd,'201.csv')
+        blHeader = False if os.path.exists(file_name) else True
+        df201.to_csv(file_name, mode='a', header=blHeader, index=False, encoding = 'cp949')
+    
+    if len(total_data301)!=0:
+        df301 = pd.DataFrame(total_data301)
+        df301.columns = ['YYMMDD', 'act','code','prx','iv','delt','gama','ceta','vega','value']    
+        file_name = "{0}_{1}".format(yymmdd,'301.csv')
+        blHeader = False if os.path.exists(file_name) else True
+        df301.to_csv(file_name, mode='a', header=blHeader, index=False, encoding = 'cp949')    
