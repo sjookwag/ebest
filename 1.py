@@ -209,17 +209,17 @@ if __name__ == "__main__":
     
     if RUN_MODE : #모의투자
         server_add = "hts.ebestsec.co.kr"
-        id = "jimsjoo"
-        passwd = "sjoo@422"
-        cert_passwd = "jimsjoo@3194"
-        account_number = "20055436101" 
-        account_pwd = "0719"   
+        id = "YOUR_ID"
+        passwd = "YOUR_PWD"
+        cert_passwd = "YOUR_CERT"
+        account_number = "YOUR_ACCT" 
+        account_pwd = "ACC_PWD"   
     else:
         server_add = "demo.ebestsec.co.kr"
-        id = "jimsjoo"    # 본인의 ID로 수정
-        passwd = "sjoo@422"
-        account_number = '20055436101'
-        account_pwd = "0000"   
+        id = "YOUR_ID"    # 본인의 ID로 수정
+        passwd = "YOUR_PWD"
+        account_number = "YOUR_ACCT" 
+        account_pwd = "0000"    
     
     print('\n[START]: eBest testing')
     ret = login(server_add, id, passwd, cert_passwd, account_number, account_pwd)
